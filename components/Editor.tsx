@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { UserDocument, SuggestedChange, ModificationLevel } from '../types';
 import { refineDocument } from '../services/geminiService';
@@ -69,6 +68,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   const [mode, setMode] = useState<'edit' | 'review'>('edit');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [modLevel, setModLevel] = useState<ModificationLevel>('refine');
+  const [viewMode, setViewMode] = useState<'list' | 'preview'>('list'); // 'list' = Changes Only, 'preview' = Full Text
 
   // Slash Command State
   const [showCommands, setShowCommands] = useState(false);
@@ -78,7 +78,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   // Refs for connector lines
   const containerRef = useRef<HTMLDivElement>(null);
   const sourceRefs = useRef<{ [key: number]: HTMLSpanElement | null }>({});
-  const targetRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const targetRefs = useRef<{ [key: number]: HTMLElement | null }>({});
   const [lineCoords, setLineCoords] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
 
   // Automatically manage mode based on suggestions
@@ -100,7 +100,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       }
 
       const sourceEl = sourceRefs.current[hoveredIndex];
-      const targetEl = targetRefs.current[hoveredIndex];
+      const targetEl = targetRefs.current[hoveredIndex]; // Works for both List cards and Preview spans if ref is attached
 
       if (sourceEl && targetEl) {
         const containerRect = containerRef.current.getBoundingClientRect();
@@ -130,7 +130,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
             scrollables.forEach(el => el.removeEventListener('scroll', updateLine));
         };
     }
-  }, [hoveredIndex, mode, document.activeSuggestions]);
+  }, [hoveredIndex, mode, document.activeSuggestions, viewMode]);
 
 
   const stats = useMemo(() => {
@@ -139,6 +139,61 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     const words = document.content.trim() ? document.content.trim().split(/\s+/).length : 0;
     return { lines, chars, words };
   }, [document.content]);
+
+  // --- Core Matching Logic (Memoized) ---
+  const suggestionMatches = useMemo(() => {
+    const currentText = document.content;
+    const suggestions = document.activeSuggestions || [];
+    const matches: { start: number; end: number; sugIndex: number }[] = [];
+    
+    suggestions.forEach((sug, idx) => {
+      let searchPos = 0;
+      // Simplistic matching: find first non-overlapping occurrence
+      while (true) {
+        const foundIdx = currentText.indexOf(sug.originalText, searchPos);
+        if (foundIdx === -1) break;
+        
+        const isOverlapping = matches.some(m => 
+          (foundIdx >= m.start && foundIdx < m.end) || 
+          (foundIdx + sug.originalText.length > m.start && foundIdx + sug.originalText.length <= m.end)
+        );
+
+        if (!isOverlapping) {
+          matches.push({
+            start: foundIdx,
+            end: foundIdx + sug.originalText.length,
+            sugIndex: idx
+          });
+          break; // Only match the first occurrence
+        }
+        searchPos = foundIdx + 1;
+      }
+    });
+
+    return matches.sort((a, b) => a.start - b.start);
+  }, [document.content, document.activeSuggestions]);
+
+  // --- Full Modified Text Calculation ---
+  const fullModifiedText = useMemo(() => {
+    let text = '';
+    let lastPos = 0;
+    const currentText = document.content;
+    const suggestions = document.activeSuggestions || [];
+
+    suggestionMatches.forEach(m => {
+       text += currentText.substring(lastPos, m.start);
+       text += suggestions[m.sugIndex].modifiedText;
+       lastPos = m.end;
+    });
+    text += currentText.substring(lastPos);
+    return text;
+  }, [document.content, document.activeSuggestions, suggestionMatches]);
+
+  const handleCopyRightPanel = () => {
+    navigator.clipboard.writeText(fullModifiedText);
+    // Visual feedback could be added here
+    alert("Full modified text copied to clipboard!");
+  };
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     onUpdate({
@@ -188,7 +243,6 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   const selectCommand = (cmd: typeof SLASH_COMMANDS[0]) => {
     setChatInput(cmd.value);
     setShowCommands(false);
-    // Optional: Focus back or auto-submit? Let's keep it as fill-in for now so user can edit.
   };
 
   const handleAIChat = async (e: React.FormEvent) => {
@@ -231,41 +285,10 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     const resultParts: React.ReactNode[] = [];
     let lastPos = 0;
 
-    // Reset refs map
+    // Reset refs map for source
     sourceRefs.current = {};
 
-    const matches: { start: number; end: number; sugIndex: number }[] = [];
-    
-    // Ensure activeSuggestions exists
-    const suggestions = document.activeSuggestions || [];
-    
-    suggestions.forEach((sug, idx) => {
-      let searchPos = 0;
-      // Simplistic matching: find first non-overlapping occurrence
-      while (true) {
-        const foundIdx = currentText.indexOf(sug.originalText, searchPos);
-        if (foundIdx === -1) break;
-        
-        const isOverlapping = matches.some(m => 
-          (foundIdx >= m.start && foundIdx < m.end) || 
-          (foundIdx + sug.originalText.length > m.start && foundIdx + sug.originalText.length <= m.end)
-        );
-
-        if (!isOverlapping) {
-          matches.push({
-            start: foundIdx,
-            end: foundIdx + sug.originalText.length,
-            sugIndex: idx
-          });
-          break; // Only match the first occurrence for this specific suggestion index to avoid confusion
-        }
-        searchPos = foundIdx + 1;
-      }
-    });
-
-    matches.sort((a, b) => a.start - b.start);
-
-    matches.forEach((match, i) => {
+    suggestionMatches.forEach((match, i) => {
       if (match.start > lastPos) {
         resultParts.push(<span key={`text-${i}`}>{currentText.substring(lastPos, match.start)}</span>);
       }
@@ -300,6 +323,53 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
         {resultParts.length > 0 ? resultParts : currentText}
       </div>
     );
+  };
+
+  // Helper to render the Right Panel (Preview Mode)
+  const renderPreviewContent = () => {
+     const currentText = document.content;
+     const suggestions = document.activeSuggestions || [];
+     const resultParts: React.ReactNode[] = [];
+     let lastPos = 0;
+     
+     // Reset refs map for target (using same map key as source)
+     targetRefs.current = {};
+
+     suggestionMatches.forEach((match, i) => {
+       // Unchanged text
+       if (match.start > lastPos) {
+         resultParts.push(<span key={`p-text-${i}`} className="text-black/60">{currentText.substring(lastPos, match.start)}</span>);
+       }
+       
+       // Modified text
+       const sug = suggestions[match.sugIndex];
+       resultParts.push(
+         <span 
+           key={`p-match-${i}`}
+           ref={el => { targetRefs.current[match.sugIndex] = el }}
+           onMouseEnter={() => setHoveredIndex(match.sugIndex)}
+           onMouseLeave={() => setHoveredIndex(null)}
+           className={`cursor-pointer transition-all duration-200 rounded-sm
+             ${hoveredIndex === match.sugIndex 
+               ? 'bg-green-100 text-green-800 px-0.5 box-decoration-clone shadow-sm' 
+               : 'bg-green-50/50 text-black'}`}
+           title={sug.reason}
+         >
+           {sug.modifiedText}
+         </span>
+       );
+       lastPos = match.end;
+     });
+
+     if (lastPos < currentText.length) {
+       resultParts.push(<span key="p-text-end" className="text-black/60">{currentText.substring(lastPos)}</span>);
+     }
+
+     return (
+        <div className="p-8 text-sm leading-loose whitespace-pre-wrap font-sans">
+           {resultParts}
+        </div>
+     );
   };
 
   return (
@@ -381,13 +451,37 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           </div>
         </div>
 
-        {/* RIGHT PANEL: Modification Suggestions */}
+        {/* RIGHT PANEL: Modification Suggestions OR Full Preview */}
         <div className="flex-1 flex flex-col bg-slate-50 relative overflow-hidden z-10">
-          <div className="absolute top-4 right-6 text-[10px] font-bold text-black/20 pointer-events-none uppercase tracking-widest z-10">
-            Suggested Revisions
+          
+          {/* Right Panel Header with Toggles */}
+          <div className="h-10 border-b border-black/5 flex items-center justify-between px-4 bg-slate-50/50 backdrop-blur-sm z-20 shrink-0">
+             <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setViewMode('list')}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${viewMode === 'list' ? 'bg-black text-white' : 'text-black/40 hover:text-black'}`}
+                >
+                  Changes Only
+                </button>
+                <div className="w-[1px] h-3 bg-black/10"></div>
+                <button 
+                  onClick={() => setViewMode('preview')}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${viewMode === 'preview' ? 'bg-black text-white' : 'text-black/40 hover:text-black'}`}
+                >
+                  Full Preview
+                </button>
+             </div>
+             <button
+               onClick={handleCopyRightPanel}
+               title="Copy result"
+               className="text-[10px] font-bold text-black/40 hover:text-black uppercase tracking-wider flex items-center gap-1"
+             >
+               <span>COPY</span>
+               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto p-8">
+          <div className="flex-1 overflow-y-auto">
             {(!document.activeSuggestions || !document.activeSuggestions.length) ? (
                <div className="h-full flex flex-col items-center justify-center text-black/20 space-y-4">
                   <div className="w-16 h-16 border-2 border-black/10 rounded-full flex items-center justify-center">
@@ -396,65 +490,71 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                   <p className="text-xs font-medium uppercase tracking-widest">No Active Suggestions</p>
                </div>
             ) : (
-              <div className="space-y-4 max-w-xl mx-auto pt-8 pb-20">
-                {document.activeSuggestions.map((sug, idx) => (
-                  <div 
-                    key={idx}
-                    ref={el => { targetRefs.current[idx] = el }}
-                    onMouseEnter={() => setHoveredIndex(idx)}
-                    onMouseLeave={() => setHoveredIndex(null)}
-                    className={`transition-all duration-300 ${
-                      hoveredIndex === idx 
-                        ? 'translate-x-2' 
-                        : ''
-                    }`}
-                  >
-                    <div className={`bg-white p-5 border transition-all relative ${
-                      hoveredIndex === idx 
-                        ? 'border-black line-art-shadow shadow-xl z-20' 
-                        : 'border-black/5 shadow-sm opacity-80 hover:opacity-100 hover:border-black/20'
-                    }`}>
-                      
-                      {/* Default View: Just the modified sentence */}
-                      <div>
-                        <p className="text-sm font-medium leading-relaxed text-black">
-                          {sug.modifiedText}
-                        </p>
-                      </div>
+              <>
+                 {viewMode === 'list' ? (
+                   // LIST VIEW (Cards)
+                   <div className="p-8 space-y-4 max-w-xl mx-auto pb-20">
+                     {document.activeSuggestions.map((sug, idx) => (
+                       <div 
+                         key={idx}
+                         ref={el => { targetRefs.current[idx] = el }}
+                         onMouseEnter={() => setHoveredIndex(idx)}
+                         onMouseLeave={() => setHoveredIndex(null)}
+                         className={`transition-all duration-300 ${
+                           hoveredIndex === idx 
+                             ? 'translate-x-2' 
+                             : ''
+                         }`}
+                       >
+                         <div className={`bg-white p-5 border transition-all relative ${
+                           hoveredIndex === idx 
+                             ? 'border-black line-art-shadow shadow-xl z-20' 
+                             : 'border-black/5 shadow-sm opacity-80 hover:opacity-100 hover:border-black/20'
+                         }`}>
+                           
+                           <div>
+                             <p className="text-sm font-medium leading-relaxed text-black">
+                               {sug.modifiedText}
+                             </p>
+                           </div>
 
-                      {/* Hover View: Reveal Analysis and Diff */}
-                      <div className={`overflow-hidden transition-all duration-300 ease-in-out ${hoveredIndex === idx ? 'max-h-96 opacity-100 mt-4 pt-4 border-t border-black/5' : 'max-h-0 opacity-0'}`}>
-                         <div className="grid gap-4">
-                            <div>
-                                <p className="text-[9px] font-bold text-blue-500 uppercase mb-1 tracking-wider">Analysis</p>
-                                <p className="text-xs text-black/70 leading-relaxed italic">
-                                "{sug.reason}"
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-[9px] font-bold text-purple-600 uppercase mb-1 tracking-wider">Text Diff</p>
-                                <div className="text-xs leading-relaxed text-black/80 font-mono bg-black/[0.02] p-2 rounded whitespace-pre-wrap">
-                                  {computeDiff(sug.originalText, sug.modifiedText).map((part, i) => (
-                                    <span 
-                                      key={i} 
-                                      className={`${
-                                        part.type === 'add' ? 'bg-green-100 text-green-700' :
-                                        part.type === 'remove' ? 'bg-red-100 text-red-600 line-through' :
-                                        'text-gray-500'
-                                      }`}
-                                    >
-                                      {part.value}
-                                    </span>
-                                  ))}
-                                </div>
-                            </div>
+                           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${hoveredIndex === idx ? 'max-h-96 opacity-100 mt-4 pt-4 border-t border-black/5' : 'max-h-0 opacity-0'}`}>
+                              <div className="grid gap-4">
+                                 <div>
+                                     <p className="text-[9px] font-bold text-blue-500 uppercase mb-1 tracking-wider">Analysis</p>
+                                     <p className="text-xs text-black/70 leading-relaxed italic">
+                                     "{sug.reason}"
+                                     </p>
+                                 </div>
+                                 <div>
+                                     <p className="text-[9px] font-bold text-purple-600 uppercase mb-1 tracking-wider">Text Diff</p>
+                                     <div className="text-xs leading-relaxed text-black/80 font-mono bg-black/[0.02] p-2 rounded whitespace-pre-wrap">
+                                       {computeDiff(sug.originalText, sug.modifiedText).map((part, i) => (
+                                         <span 
+                                           key={i} 
+                                           className={`${
+                                             part.type === 'add' ? 'bg-green-100 text-green-700' :
+                                             part.type === 'remove' ? 'bg-red-100 text-red-600 line-through' :
+                                             'text-gray-500'
+                                           }`}
+                                         >
+                                           {part.value}
+                                         </span>
+                                       ))}
+                                     </div>
+                                 </div>
+                              </div>
+                           </div>
+
                          </div>
-                      </div>
-
-                    </div>
-                  </div>
-                ))}
-              </div>
+                       </div>
+                     ))}
+                   </div>
+                 ) : (
+                   // PREVIEW VIEW (Full Text)
+                   renderPreviewContent()
+                 )}
+              </>
             )}
           </div>
         </div>
