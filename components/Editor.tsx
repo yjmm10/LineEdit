@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { UserDocument, SuggestedChange, ModificationLevel } from '../types';
 import { refineDocument } from '../services/geminiService';
@@ -8,15 +9,24 @@ interface EditorProps {
   onTakeSnapshot: () => void;
 }
 
+// --- Icons ---
+const CheckIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>
+);
+const XIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+);
+const RefreshIcon = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 2v6h-6"></path><path d="M3 12a9 9 0 0 1 15-6.7L21 8"></path><path d="M3 22v-6h6"></path><path d="M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>
+);
+
 // --- Robust Diff Utility (Token-based LCS) ---
 type DiffPart = { type: 'same' | 'add' | 'remove'; value: string };
 
 const computeDiff = (text1: string, text2: string): DiffPart[] => {
-  // Tokenize by word, whitespace, or punctuation to ensure granular diffs
   const t1 = text1.match(/([a-zA-Z0-9_]+|\s+|[^a-zA-Z0-9_\s])/g) || [];
   const t2 = text2.match(/([a-zA-Z0-9_]+|\s+|[^a-zA-Z0-9_\s])/g) || [];
   
-  // Standard LCS Dynamic Programming
   const matrix = Array(t1.length + 1).fill(null).map(() => Array(t2.length + 1).fill(0));
 
   for (let i = 1; i <= t1.length; i++) {
@@ -29,7 +39,6 @@ const computeDiff = (text1: string, text2: string): DiffPart[] => {
     }
   }
 
-  // Backtrack to generate Diff
   const result: DiffPart[] = [];
   let i = t1.length;
   let j = t2.length;
@@ -65,10 +74,11 @@ const SLASH_COMMANDS = [
 export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapshot }) => {
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processingCardIndex, setProcessingCardIndex] = useState<number | null>(null);
   const [mode, setMode] = useState<'edit' | 'review'>('edit');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [modLevel, setModLevel] = useState<ModificationLevel>('refine');
-  const [viewMode, setViewMode] = useState<'list' | 'preview'>('list'); // 'list' = Changes Only, 'preview' = Full Text
+  const [viewMode, setViewMode] = useState<'list' | 'preview'>('list');
 
   // Slash Command State
   const [showCommands, setShowCommands] = useState(false);
@@ -81,17 +91,15 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   const targetRefs = useRef<{ [key: number]: HTMLElement | null }>({});
   const [lineCoords, setLineCoords] = useState<{ x1: number, y1: number, x2: number, y2: number } | null>(null);
 
-  // Automatically manage mode based on suggestions
   useEffect(() => {
     if (document.activeSuggestions && document.activeSuggestions.length > 0) {
       setMode('review');
     } else {
-      // If no suggestions (e.g. restored clean snapshot), switch to edit mode
       setMode('edit');
     }
   }, [document.activeSuggestions]);
 
-  // Update line coordinates when hover changes or scroll happens
+  // Update line coordinates
   useEffect(() => {
     const updateLine = () => {
       if (hoveredIndex === null || !containerRef.current) {
@@ -100,7 +108,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       }
 
       const sourceEl = sourceRefs.current[hoveredIndex];
-      const targetEl = targetRefs.current[hoveredIndex]; // Works for both List cards and Preview spans if ref is attached
+      const targetEl = targetRefs.current[hoveredIndex];
 
       if (sourceEl && targetEl) {
         const containerRect = containerRef.current.getBoundingClientRect();
@@ -118,7 +126,6 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
     updateLine();
 
-    // Add listeners to update line on scroll/resize
     const container = containerRef.current;
     if(container) {
         window.addEventListener('resize', updateLine);
@@ -148,7 +155,6 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     
     suggestions.forEach((sug, idx) => {
       let searchPos = 0;
-      // Simplistic matching: find first non-overlapping occurrence
       while (true) {
         const foundIdx = currentText.indexOf(sug.originalText, searchPos);
         if (foundIdx === -1) break;
@@ -164,7 +170,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
             end: foundIdx + sug.originalText.length,
             sugIndex: idx
           });
-          break; // Only match the first occurrence
+          break;
         }
         searchPos = foundIdx + 1;
       }
@@ -189,9 +195,69 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     return text;
   }, [document.content, document.activeSuggestions, suggestionMatches]);
 
+  // --- Actions ---
+
+  const handleAcceptChange = (index: number) => {
+    const match = suggestionMatches.find(m => m.sugIndex === index);
+    if (!match) return;
+
+    const suggestion = document.activeSuggestions[index];
+    const newContent = document.content.slice(0, match.start) + suggestion.modifiedText + document.content.slice(match.end);
+    const newSuggestions = document.activeSuggestions.filter((_, i) => i !== index);
+
+    onUpdate({
+      ...document,
+      content: newContent,
+      activeSuggestions: newSuggestions,
+      lastModified: Date.now()
+    });
+    setHoveredIndex(null);
+  };
+
+  const handleRejectChange = (index: number) => {
+    const newSuggestions = document.activeSuggestions.filter((_, i) => i !== index);
+    onUpdate({
+      ...document,
+      activeSuggestions: newSuggestions,
+      lastModified: Date.now()
+    });
+    setHoveredIndex(null);
+  };
+
+  const handleRetryChange = async (index: number) => {
+    setProcessingCardIndex(index);
+    const suggestion = document.activeSuggestions[index];
+    
+    // Construct a retry prompt
+    const instruction = chatInput.trim() 
+      ? `(Context: ${chatInput}) Regenerate this improvement.` 
+      : "Improve this text again with the current strategy.";
+
+    try {
+      const result = await refineDocument(suggestion.originalText, instruction, modLevel);
+      if (result.suggestions.length > 0) {
+        // We use the first suggestion returned for the single sentence
+        const newSug = result.suggestions[0];
+        // Ensure originalText remains consistent with the document's current state
+        newSug.originalText = suggestion.originalText;
+        
+        const newSuggestions = [...document.activeSuggestions];
+        newSuggestions[index] = newSug;
+        
+        onUpdate({
+          ...document,
+          activeSuggestions: newSuggestions
+        });
+      }
+    } catch (err) {
+      console.error("Retry failed", err);
+    } finally {
+      setProcessingCardIndex(null);
+    }
+  };
+
   const handleCopyRightPanel = () => {
     navigator.clipboard.writeText(fullModifiedText);
-    // Visual feedback could be added here
     alert("Full modified text copied to clipboard!");
   };
 
@@ -200,11 +266,11 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       ...document,
       content: e.target.value,
       lastModified: Date.now(),
-      activeSuggestions: [] // Clear suggestions on edit
+      activeSuggestions: [] 
     });
   };
 
-  // Chat Input Logic with Slash Commands
+  // Chat Input Logic
   const handleChatChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setChatInput(val);
@@ -217,7 +283,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       );
       setFilteredCommands(filtered);
       setShowCommands(filtered.length > 0);
-      setCommandIndex(0); // Reset selection
+      setCommandIndex(0); 
     } else {
       setShowCommands(false);
     }
@@ -250,7 +316,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     if (!chatInput.trim() || isProcessing) return;
 
     setIsProcessing(true);
-    setShowCommands(false); // Ensure menu is closed
+    setShowCommands(false); 
     try {
       const response = await refineDocument(document.content, chatInput, modLevel);
       onUpdate({
@@ -267,7 +333,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     }
   };
 
-  // Helper to render the Left Panel content (Interactive Review Mode)
+  // Render Source
   const renderSourceContent = () => {
     if (mode === 'edit') {
       return (
@@ -280,12 +346,9 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       );
     }
 
-    // Review Mode: Render text with interactive spans
     const currentText = document.content;
     const resultParts: React.ReactNode[] = [];
     let lastPos = 0;
-
-    // Reset refs map for source
     sourceRefs.current = {};
 
     suggestionMatches.forEach((match, i) => {
@@ -325,37 +388,52 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     );
   };
 
-  // Helper to render the Right Panel (Preview Mode)
+  // Render Preview
   const renderPreviewContent = () => {
      const currentText = document.content;
      const suggestions = document.activeSuggestions || [];
      const resultParts: React.ReactNode[] = [];
      let lastPos = 0;
-     
-     // Reset refs map for target (using same map key as source)
      targetRefs.current = {};
 
      suggestionMatches.forEach((match, i) => {
-       // Unchanged text
        if (match.start > lastPos) {
          resultParts.push(<span key={`p-text-${i}`} className="text-black/60">{currentText.substring(lastPos, match.start)}</span>);
        }
        
-       // Modified text
        const sug = suggestions[match.sugIndex];
+       const isHovered = hoveredIndex === match.sugIndex;
+       
        resultParts.push(
          <span 
            key={`p-match-${i}`}
            ref={el => { targetRefs.current[match.sugIndex] = el }}
            onMouseEnter={() => setHoveredIndex(match.sugIndex)}
            onMouseLeave={() => setHoveredIndex(null)}
-           className={`cursor-pointer transition-all duration-200 rounded-sm
-             ${hoveredIndex === match.sugIndex 
+           className={`cursor-pointer transition-all duration-200 rounded-sm relative group
+             ${isHovered
                ? 'bg-green-100 text-green-800 px-0.5 box-decoration-clone shadow-sm' 
                : 'bg-green-50/50 text-black'}`}
-           title={sug.reason}
          >
            {sug.modifiedText}
+           
+           {/* Popover Actions for Preview Mode */}
+           {isHovered && (
+             <span className="absolute left-0 top-full mt-1 z-50 bg-white border border-black shadow-lg p-2 min-w-[140px] rounded flex flex-col gap-2 pointer-events-auto">
+               <div className="text-[10px] text-black/60 italic leading-tight mb-1">{sug.reason}</div>
+               <div className="flex items-center gap-1">
+                 <button onClick={(e) => { e.stopPropagation(); handleAcceptChange(match.sugIndex); }} className="flex-1 bg-black text-white p-1 rounded hover:bg-gray-800" title="Accept">
+                   <CheckIcon className="w-3 h-3 mx-auto"/>
+                 </button>
+                 <button onClick={(e) => { e.stopPropagation(); handleRetryChange(match.sugIndex); }} className="flex-1 border border-black/10 p-1 rounded hover:bg-gray-100" title="Retry">
+                    {processingCardIndex === match.sugIndex ? <div className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin mx-auto"/> : <RefreshIcon className="w-3 h-3 mx-auto"/>}
+                 </button>
+                 <button onClick={(e) => { e.stopPropagation(); handleRejectChange(match.sugIndex); }} className="flex-1 border border-red-200 text-red-600 p-1 rounded hover:bg-red-50" title="Reject">
+                   <XIcon className="w-3 h-3 mx-auto"/>
+                 </button>
+               </div>
+             </span>
+           )}
          </span>
        );
        lastPos = match.end;
@@ -366,7 +444,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
      }
 
      return (
-        <div className="p-8 text-sm leading-loose whitespace-pre-wrap font-sans">
+        <div className="p-8 text-sm leading-loose whitespace-pre-wrap font-sans pb-32">
            {resultParts}
         </div>
      );
@@ -436,7 +514,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           )}
         </svg>
 
-        {/* LEFT PANEL: Source Document */}
+        {/* LEFT PANEL */}
         <div className="flex-1 border-r border-black/10 flex flex-col relative bg-white z-10">
           <div className="absolute top-4 right-6 text-[10px] font-bold text-black/20 pointer-events-none uppercase tracking-widest z-10">
             {mode === 'edit' ? 'Editor Mode' : 'Original Text'}
@@ -451,10 +529,10 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           </div>
         </div>
 
-        {/* RIGHT PANEL: Modification Suggestions OR Full Preview */}
+        {/* RIGHT PANEL */}
         <div className="flex-1 flex flex-col bg-slate-50 relative overflow-hidden z-10">
           
-          {/* Right Panel Header with Toggles */}
+          {/* Right Panel Header */}
           <div className="h-10 border-b border-black/5 flex items-center justify-between px-4 bg-slate-50/50 backdrop-blur-sm z-20 shrink-0">
              <div className="flex items-center gap-2">
                 <button 
@@ -477,7 +555,6 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                className="text-[10px] font-bold text-black/40 hover:text-black uppercase tracking-wider flex items-center gap-1"
              >
                <span>COPY</span>
-               <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
              </button>
           </div>
           
@@ -542,6 +619,19 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                                          </span>
                                        ))}
                                      </div>
+                                 </div>
+                                 
+                                 {/* ACTIONS (List View) */}
+                                 <div className="flex items-center gap-2 pt-2">
+                                    <button onClick={() => handleAcceptChange(idx)} className="flex-1 flex items-center justify-center gap-2 bg-black text-white py-2 text-[10px] font-bold uppercase tracking-wider hover:bg-gray-800 transition-colors">
+                                      <CheckIcon className="w-3 h-3" /> Accept
+                                    </button>
+                                    <button onClick={() => handleRetryChange(idx)} disabled={processingCardIndex === idx} className="px-3 py-2 bg-white border border-black/10 text-black text-[10px] hover:bg-black/5 transition-colors">
+                                      {processingCardIndex === idx ? <div className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin"/> : <RefreshIcon className="w-3 h-3" />}
+                                    </button>
+                                    <button onClick={() => handleRejectChange(idx)} className="px-3 py-2 bg-white border border-red-100 text-red-500 text-[10px] hover:bg-red-50 transition-colors">
+                                      <XIcon className="w-3 h-3" />
+                                    </button>
                                  </div>
                               </div>
                            </div>
