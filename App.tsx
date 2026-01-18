@@ -10,7 +10,7 @@ const STORAGE_KEY = 'lineedit_docs_data';
 const INITIAL_DOC: UserDocument = {
   id: 'default',
   title: 'Untitled Masterpiece',
-  content: 'The quick brown fox jumps over the lazy dog. Writing is nature\'s way of letting you know how sloppy your thinking is.',
+  content: '一款面向创作者的极简设计引擎。具有高冲击力的排版、精准的控制以及精致的线条艺术美感。',
   lastModified: Date.now(),
   snapshots: [],
   activeSuggestions: []

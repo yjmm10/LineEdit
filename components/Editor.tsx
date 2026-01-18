@@ -79,6 +79,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [modLevel, setModLevel] = useState<ModificationLevel>('refine');
   const [viewMode, setViewMode] = useState<'list' | 'preview'>('list');
+  const [selection, setSelection] = useState<string>('');
 
   // Slash Command State
   const [showCommands, setShowCommands] = useState(false);
@@ -194,6 +195,32 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     text += currentText.substring(lastPos);
     return text;
   }, [document.content, document.activeSuggestions, suggestionMatches]);
+
+  // --- Selection Handlers ---
+  const handleTextareaSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    const target = e.currentTarget;
+    const text = target.value.substring(target.selectionStart, target.selectionEnd);
+    if (text.trim().length > 0) {
+      setSelection(text);
+    } else {
+      setSelection('');
+    }
+  };
+
+  const handleReviewSelect = () => {
+    const sel = window.getSelection();
+    if (sel && sel.toString().trim().length > 0) {
+      // Basic check to ensure we are selecting inside the editor
+      if (containerRef.current && containerRef.current.contains(sel.anchorNode)) {
+        setSelection(sel.toString());
+      }
+    } else {
+        // Only clear if we are in review mode to avoid conflict with textarea
+        if (mode === 'review') {
+            setSelection('');
+        }
+    }
+  };
 
   // --- Actions ---
 
@@ -316,15 +343,20 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     if (!chatInput.trim() || isProcessing) return;
 
     setIsProcessing(true);
-    setShowCommands(false); 
+    setShowCommands(false);
+    
+    // Determine content to send: Selection OR Full Document
+    const contentToSend = selection.trim() ? selection : document.content;
+
     try {
-      const response = await refineDocument(document.content, chatInput, modLevel);
+      const response = await refineDocument(contentToSend, chatInput, modLevel);
       onUpdate({
         ...document,
         activeSuggestions: response.suggestions,
         lastModified: Date.now()
       });
       setChatInput('');
+      setSelection(''); // Clear selection after processing
       setMode('review');
     } catch (error) {
       console.error("AI Modification Error:", error);
@@ -340,6 +372,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
         <textarea
           value={document.content}
           onChange={handleContentChange}
+          onSelect={handleTextareaSelect}
           placeholder="Start typing or paste your content..."
           className="flex-1 p-8 text-sm leading-loose focus:outline-none resize-none bg-transparent font-sans"
         />
@@ -381,7 +414,8 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       <div 
         className="flex-1 p-8 text-sm leading-loose whitespace-pre-wrap font-sans overflow-y-auto cursor-text select-text"
         onDoubleClick={() => setMode('edit')}
-        title="Double-click to edit"
+        onMouseUp={handleReviewSelect}
+        title="Double-click to edit, select text to refine specific parts"
       >
         {resultParts.length > 0 ? resultParts : currentText}
       </div>
@@ -654,6 +688,18 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       <div className="p-6 border-t border-black/10 bg-white z-20 relative">
         <form onSubmit={handleAIChat} className="max-w-3xl mx-auto flex flex-col gap-4 relative">
           
+          {/* Selection Indicator */}
+          {selection && (
+            <div className="absolute bottom-full mb-4 left-0 right-0 flex justify-center">
+              <div className="bg-black text-white px-4 py-2 rounded-full text-xs font-medium flex items-center gap-3 shadow-lg animate-bounce-in">
+                <span className="max-w-[200px] truncate">Targeting Selection: "{selection}"</span>
+                <button type="button" onClick={() => setSelection('')} className="hover:text-red-300">
+                  <XIcon className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Slash Command Menu */}
           {showCommands && (
             <div className="absolute bottom-full left-0 mb-2 w-full max-w-lg bg-white border border-black shadow-lg rounded-t-lg overflow-hidden z-50">
@@ -685,7 +731,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
               value={chatInput}
               onChange={handleChatChange}
               onKeyDown={handleKeyDown}
-              placeholder="Type '/' for commands or ask AI..."
+              placeholder={selection ? "Instructions for selection..." : "Type '/' for commands or ask AI..."}
               className="flex-1 px-4 py-3 bg-white border border-black focus:outline-none focus:ring-1 focus:ring-black text-black text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow placeholder:text-black/30"
               disabled={isProcessing}
               autoComplete="off"
