@@ -23,19 +23,34 @@ const getEnvVar = (key: string): string | undefined => {
 
   // 2. Check process.env (Polyfilled by Vite define or Node)
   try {
-    // Explicit checks for static replacement compatibility
-    if (key === 'GEMINI_API_KEY' && typeof process !== 'undefined' && process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+    // CRITICAL FIX: Vite replaces 'process.env.KEY' with the literal string value at build time.
+    // We MUST NOT check 'typeof process' here, because 'process' does not exist in the browser.
+    // We just access the key directly, trusting that Vite has replaced it with a string or undefined.
     
-    if (key === 'BASE_URL' && typeof process !== 'undefined') {
+    if (key === 'GEMINI_API_KEY') {
+        // @ts-ignore
+        return process.env.GEMINI_API_KEY;
+    }
+    
+    if (key === 'BASE_URL') {
        // Check the alias first which is safer
+       // @ts-ignore
        if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
+       // @ts-ignore
        if (process.env.BASE_URL) return process.env.BASE_URL;
     }
 
-    if (key === 'API_KEY' && typeof process !== 'undefined' && process.env.API_KEY) return process.env.API_KEY;
-    if (key === 'MODEL_NAME' && typeof process !== 'undefined' && process.env.MODEL_NAME) return process.env.MODEL_NAME;
+    if (key === 'API_KEY') {
+        // @ts-ignore
+        return process.env.API_KEY;
+    }
 
-    // Fallback dynamic access
+    if (key === 'MODEL_NAME') {
+        // @ts-ignore
+        return process.env.MODEL_NAME;
+    }
+
+    // Fallback dynamic access (Only works if process is actually defined, e.g. Node.js)
     // @ts-ignore
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
       // @ts-ignore
