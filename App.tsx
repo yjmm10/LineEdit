@@ -100,7 +100,7 @@ const AppContent: React.FC = () => {
           />
         )}
       </main>
-      <Analytics />
+      {import.meta.env?.PROD && <Analytics />}
     </div>
   );
 };
