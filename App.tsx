@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import { LandingPage } from './components/LandingPage';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { UserDocument, DocumentSnapshot } from './types';
-import { Analytics } from '@vercel/analytics/react';
+import { ToastProvider } from './contexts/ToastContext';
 
 const STORAGE_KEY = 'lineedit_docs_data';
 
@@ -17,7 +18,7 @@ const INITIAL_DOC: UserDocument = {
   activeSuggestions: []
 };
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [showLanding, setShowLanding] = useState(true);
   const [documents, setDocuments] = useState<UserDocument[]>(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
@@ -60,7 +61,8 @@ const App: React.FC = () => {
       ...activeDoc,
       snapshots: [...activeDoc.snapshots, newSnapshot]
     });
-    alert("Snapshot saved successfully.");
+    // Removed alert, Editor handles its own feedback or we could add toast here, 
+    // but onTakeSnapshot is passed down, let's keep it simple or let Editor show success
   };
 
   const handleRestoreSnapshot = (docId: string, snapshot: DocumentSnapshot) => {
@@ -71,7 +73,7 @@ const App: React.FC = () => {
     setDocuments(prev => prev.map(d => d.id === docId ? {
       ...d,
       content: snapshot.content,
-      activeSuggestions: snapshot.suggestions || [], // Safe fallback for legacy snapshots
+      activeSuggestions: snapshot.suggestions || [], 
       lastModified: Date.now()
     } : d));
   };
@@ -102,5 +104,13 @@ const App: React.FC = () => {
     </div>
   );
 };
+
+const App: React.FC = () => {
+  return (
+    <ToastProvider>
+      <AppContent />
+    </ToastProvider>
+  );
+}
 
 export default App;

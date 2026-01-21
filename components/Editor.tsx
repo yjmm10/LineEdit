@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { UserDocument, SuggestedChange, ModificationLevel } from '../types';
 import { refineDocument } from '../services/geminiService';
+import { useToast } from '../contexts/ToastContext';
 
 interface EditorProps {
   document: UserDocument;
@@ -72,6 +73,7 @@ const SLASH_COMMANDS = [
 // --- Component ---
 
 export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapshot }) => {
+  const { showToast } = useToast();
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingCardIndex, setProcessingCardIndex] = useState<number | null>(null);
@@ -224,6 +226,11 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
   // --- Actions ---
 
+  const handleLocalSnapshot = () => {
+    onTakeSnapshot();
+    showToast("Snapshot saved successfully", "success");
+  }
+
   const handleAcceptChange = (index: number) => {
     const match = suggestionMatches.find(m => m.sugIndex === index);
     if (!match) return;
@@ -239,6 +246,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       lastModified: Date.now()
     });
     setHoveredIndex(null);
+    showToast("Suggestion applied", "success");
   };
 
   const handleRejectChange = (index: number) => {
@@ -275,10 +283,13 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           ...document,
           activeSuggestions: newSuggestions
         });
+        showToast("Suggestion regenerated", "success");
+      } else {
+        showToast("No better suggestion found", "info");
       }
     } catch (err: any) {
       console.error("Retry failed", err);
-      alert("Retry failed: " + err.message);
+      showToast("Retry failed: " + err.message, "error");
     } finally {
       setProcessingCardIndex(null);
     }
@@ -286,7 +297,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
   const handleCopyRightPanel = () => {
     navigator.clipboard.writeText(fullModifiedText);
-    alert("Full modified text copied to clipboard!");
+    showToast("Full modified text copied to clipboard!", "success");
   };
 
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -351,30 +362,32 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
     try {
       const response = await refineDocument(contentToSend, chatInput, modLevel);
-      onUpdate({
-        ...document,
-        activeSuggestions: response.suggestions,
-        lastModified: Date.now()
-      });
-      setChatInput('');
-      setSelection(''); // Clear selection after processing
-      setMode('review');
       
-      if (response.suggestions.length === 0) {
-         // Provide feedback if AI returned success but no changes
-         alert("AI processing complete, but no changes were suggested for this text/strategy.");
+      if (response.suggestions && response.suggestions.length > 0) {
+         onUpdate({
+            ...document,
+            activeSuggestions: response.suggestions,
+            lastModified: Date.now()
+          });
+          setChatInput('');
+          setSelection(''); // Clear selection after processing
+          setMode('review');
+          showToast(`Generated ${response.suggestions.length} suggestions`, "success");
+      } else {
+         showToast("AI returned no suggestions for this input.", "info");
       }
+
     } catch (error: any) {
       console.error("AI Modification Error:", error);
       
       if (error.message === "NO_PROVIDER_CONFIGURED") {
-        alert("Configuration Error: No AI Provider found.\n\nPlease set GEMINI_API_KEY or (BASE_URL + API_KEY) in your environment variables.");
+        showToast("Config Error: No valid API Keys found (GEMINI or OPENAI)", "error");
       } else if (error.message === "MISSING_GEMINI_KEY") {
-         alert("Configuration Error: GEMINI_API_KEY is missing in your environment.");
+         showToast("Config Error: Missing GEMINI_API_KEY", "error");
       } else if (error.message === "MISSING_OPENAI_CONFIG") {
-         alert("Configuration Error: BASE_URL or API_KEY is missing for OpenAI compatible endpoint.");
+         showToast("Config Error: Missing OpenAI configuration", "error");
       } else {
-        alert(`AI Request Failed: ${error.message || "Unknown error"}\n\nPlease check your internet connection or API keys.`);
+        showToast(`AI Error: ${error.message || "Unknown error"}`, "error");
       }
     } finally {
       setIsProcessing(false);
@@ -533,7 +546,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
              </button>
           </div>
           <button 
-            onClick={onTakeSnapshot}
+            onClick={handleLocalSnapshot}
             className="px-4 py-1.5 border border-black text-[10px] font-bold hover:bg-black hover:text-white transition-all line-art-shadow"
           >
             SNAPSHOT

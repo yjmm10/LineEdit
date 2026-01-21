@@ -3,13 +3,16 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, ModificationLevel } from "../types";
 
 // --- Configuration ---
-// Priority 1: Gemini
+// Priority 1: Specific Gemini Key
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 // Priority 2: OpenAI Compatible
 const OPENAI_BASE_URL = process.env.BASE_URL;
 const OPENAI_API_KEY = process.env.API_KEY;
 const OPENAI_MODEL_NAME = process.env.MODEL_NAME || "gpt-3.5-turbo";
+
+// Priority 3: Fallback generic API_KEY (assume it's Gemini if no Base URL)
+const GENERIC_API_KEY = process.env.API_KEY;
 
 const PROMPT_STRATEGIES: Record<ModificationLevel, string> = {
   preserve: `
@@ -33,10 +36,8 @@ const PROMPT_STRATEGIES: Record<ModificationLevel, string> = {
 };
 
 // --- Gemini Implementation ---
-const callGemini = async (content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
-  if (!GEMINI_API_KEY) throw new Error("MISSING_GEMINI_KEY");
-  
-  const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+const callGemini = async (apiKey: string, content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
+  const ai = new GoogleGenAI({ apiKey });
   const strategyPrompt = PROMPT_STRATEGIES[level];
 
   const model = ai.models.generateContent({
@@ -191,14 +192,22 @@ User Instruction: "${instruction}"
 // --- Main Export ---
 
 export const refineDocument = async (content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
-  // Check keys before attempting anything
+  // Scenario 1: User explicitly set GEMINI_API_KEY
   if (GEMINI_API_KEY) {
-    console.log("Using Gemini Provider");
-    return await callGemini(content, instruction, level);
-  } else if (OPENAI_BASE_URL && OPENAI_API_KEY) {
+    console.log("Using Gemini Provider (GEMINI_API_KEY)");
+    return await callGemini(GEMINI_API_KEY, content, instruction, level);
+  } 
+  // Scenario 2: User set BASE_URL and API_KEY -> OpenAI Compatible
+  else if (OPENAI_BASE_URL && OPENAI_API_KEY) {
     console.log("Using OpenAI Compatible Provider:", OPENAI_MODEL_NAME);
     return await callOpenAICompatible(content, instruction, level);
-  } else {
+  } 
+  // Scenario 3: User only set API_KEY (and no Base URL) -> Assume Gemini fallback
+  else if (GENERIC_API_KEY && !OPENAI_BASE_URL) {
+    console.log("Using Gemini Provider (Fallback to API_KEY)");
+    return await callGemini(GENERIC_API_KEY, content, instruction, level);
+  }
+  else {
     // Explicitly throw so the UI can catch it
     throw new Error("NO_PROVIDER_CONFIGURED");
   }
