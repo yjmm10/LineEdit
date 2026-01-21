@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { UserDocument, DocumentSnapshot } from '../types';
+import { Logo } from './Logo';
 
 interface SidebarProps {
   documents: UserDocument[];
@@ -16,9 +17,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ documents, activeDocId, onSele
   return (
     <div className="w-64 bg-white h-full flex flex-col shrink-0">
       <div className="p-6 border-b border-black/10">
-        <div className="flex items-center gap-2 mb-8">
-           <div className="w-6 h-6 border border-black flex items-center justify-center font-bold text-[10px]">L</div>
-           <span className="text-sm font-bold tracking-tight">LINEEDIT</span>
+        <div className="flex items-center gap-3 mb-8">
+           <Logo className="w-6 h-6 text-black" />
+           <span className="text-sm font-bold tracking-tight">LINEEDIT AI</span>
         </div>
         <button 
           onClick={onNewDoc}

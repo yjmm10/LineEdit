@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { LineArtBackground } from './LineArtBackground';
+import { Logo } from './Logo';
 
 interface LandingPageProps {
   onStart: () => void;
@@ -12,8 +13,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onStart }) => {
       <LineArtBackground />
       
       <header className="fixed top-0 w-full p-8 flex justify-between items-center z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 border-2 border-black flex items-center justify-center font-bold">L</div>
+        <div className="flex items-center gap-3">
+          <Logo className="w-8 h-8 text-black" />
           <span className="text-xl font-bold tracking-tighter">LINEEDIT AI</span>
         </div>
         <nav className="hidden md:flex gap-8 text-sm font-medium">
