@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Analytics } from '@vercel/analytics/react';
+// import { Analytics } from '@vercel/analytics/react';
 import { LandingPage } from './components/LandingPage';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
@@ -100,7 +100,7 @@ const AppContent: React.FC = () => {
           />
         )}
       </main>
-      {import.meta.env?.PROD && <Analytics />}
+      // {import.meta.env?.PROD && <Analytics />}
     </div>
   );
 };
