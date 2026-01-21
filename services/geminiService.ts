@@ -12,16 +12,26 @@ const getEnvVar = (key: string): string | undefined => {
     const viteKey = `VITE_${key}`;
     // @ts-ignore
     if (import.meta.env[viteKey]) return import.meta.env[viteKey];
-    // Check direct key (if exposed via config)
-    // @ts-ignore
-    if (import.meta.env[key]) return import.meta.env[key];
+    
+    // CRITICAL FIX: 'BASE_URL' is reserved by Vite (defaults to '/'). 
+    // We strictly ignore it here so we can retrieve the actual API URL from process.env below.
+    if (key !== 'BASE_URL') {
+      // @ts-ignore
+      if (import.meta.env[key]) return import.meta.env[key];
+    }
   }
 
   // 2. Check process.env (Polyfilled by Vite define or Node)
   try {
     // Explicit checks for static replacement compatibility
     if (key === 'GEMINI_API_KEY' && typeof process !== 'undefined' && process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
-    if (key === 'BASE_URL' && typeof process !== 'undefined' && process.env.BASE_URL) return process.env.BASE_URL;
+    
+    if (key === 'BASE_URL' && typeof process !== 'undefined') {
+       // Check the alias first which is safer
+       if (process.env.OPENAI_BASE_URL) return process.env.OPENAI_BASE_URL;
+       if (process.env.BASE_URL) return process.env.BASE_URL;
+    }
+
     if (key === 'API_KEY' && typeof process !== 'undefined' && process.env.API_KEY) return process.env.API_KEY;
     if (key === 'MODEL_NAME' && typeof process !== 'undefined' && process.env.MODEL_NAME) return process.env.MODEL_NAME;
 
@@ -177,21 +187,23 @@ ${content}
 User Instruction: "${instruction}"
 `;
 
-  try {
-    // Determine endpoint - handle cases where BASE_URL might already include /v1 or /chat/completions
-    let url = OPENAI_BASE_URL;
-    if (!url.endsWith('/chat/completions')) {
-        // If it ends with /v1, just add /chat/completions, otherwise add /v1/chat/completions
-        // This is a simple heuristic, might need adjustment based on specific provider quirks
-        if (url.endsWith('/v1')) {
-            url = `${url}/chat/completions`;
-        } else if (url.endsWith('/')) {
-             url = `${url}chat/completions`; // Assume full path provided or simplified base
-        } else {
-             url = `${url}/chat/completions`; // Default append
-        }
-    }
+  let url = OPENAI_BASE_URL.replace(/\/+$/, '');
+  
+  // Heuristic to ensure URL is correct
+  if (!url.endsWith('/chat/completions')) {
+      // Check for presence of version like v1, v1beta, v2 in the path
+      const hasVersion = /\/v\d+(?:[a-z0-9]+)?(?:$|\/)/i.test(url);
+      
+      if (hasVersion) {
+         // Version present, just append endpoint
+         url = `${url}/chat/completions`;
+      } else {
+         // No version present, standard assumption is /v1/chat/completions
+         url = `${url}/v1/chat/completions`;
+      }
+  }
 
+  try {
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -210,13 +222,21 @@ User Instruction: "${instruction}"
 
     if (!response.ok) {
         const errText = await response.text();
-        console.error("OpenAI API Error:", response.status, errText);
-        throw new Error(`API_ERROR: ${response.status} - ${errText}`);
+        console.error(`OpenAI API Error (${url}):`, response.status, errText);
+        throw new Error(`API_ERROR: ${response.status} - ${errText} (Target: ${url})`);
     }
 
     const data = await response.json();
     const jsonString = data.choices?.[0]?.message?.content || "{}";
-    return JSON.parse(jsonString) as AIResponse;
+    
+    // Attempt to parse strictly
+    try {
+        return JSON.parse(jsonString) as AIResponse;
+    } catch (parseError) {
+        // Fallback for messy markdown code blocks often returned by weaker models
+        const cleanJson = jsonString.replace(/```json\n?|\n?```/g, '').trim();
+        return JSON.parse(cleanJson) as AIResponse;
+    }
 
   } catch (error) {
     console.error("OpenAI Compatible Call Failed:", error);

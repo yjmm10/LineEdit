@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 // import { Analytics } from '@vercel/analytics/react';
 import { LandingPage } from './components/LandingPage';
@@ -100,7 +99,6 @@ const AppContent: React.FC = () => {
           />
         )}
       </main>
-      // {import.meta.env?.PROD && <Analytics />}
     </div>
   );
 };
