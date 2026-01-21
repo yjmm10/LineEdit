@@ -2,17 +2,52 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AIResponse, ModificationLevel } from "../types";
 
+// --- Configuration Helper ---
+const getEnvVar = (key: string): string | undefined => {
+  // 1. Try import.meta.env (Vite standard)
+  // @ts-ignore
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    // Check for VITE_ prefixed version first (standard convention)
+    // @ts-ignore
+    const viteKey = `VITE_${key}`;
+    // @ts-ignore
+    if (import.meta.env[viteKey]) return import.meta.env[viteKey];
+    // Check direct key (if exposed via config)
+    // @ts-ignore
+    if (import.meta.env[key]) return import.meta.env[key];
+  }
+
+  // 2. Check process.env (Polyfilled by Vite define or Node)
+  try {
+    // Explicit checks for static replacement compatibility
+    if (key === 'GEMINI_API_KEY' && typeof process !== 'undefined' && process.env.GEMINI_API_KEY) return process.env.GEMINI_API_KEY;
+    if (key === 'BASE_URL' && typeof process !== 'undefined' && process.env.BASE_URL) return process.env.BASE_URL;
+    if (key === 'API_KEY' && typeof process !== 'undefined' && process.env.API_KEY) return process.env.API_KEY;
+    if (key === 'MODEL_NAME' && typeof process !== 'undefined' && process.env.MODEL_NAME) return process.env.MODEL_NAME;
+
+    // Fallback dynamic access
+    // @ts-ignore
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      // @ts-ignore
+      return process.env[key];
+    }
+  } catch (e) {
+    // Ignore reference errors
+  }
+  return undefined;
+};
+
 // --- Configuration ---
 // Priority 1: Specific Gemini Key
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const GEMINI_API_KEY = getEnvVar('GEMINI_API_KEY');
 
 // Priority 2: OpenAI Compatible
-const OPENAI_BASE_URL = process.env.BASE_URL;
-const OPENAI_API_KEY = process.env.API_KEY;
-const OPENAI_MODEL_NAME = process.env.MODEL_NAME || "gpt-3.5-turbo";
+const OPENAI_BASE_URL = getEnvVar('BASE_URL');
+const OPENAI_API_KEY = getEnvVar('API_KEY');
+const OPENAI_MODEL_NAME = getEnvVar('MODEL_NAME') || "gpt-3.5-turbo";
 
 // Priority 3: Fallback generic API_KEY (assume it's Gemini if no Base URL)
-const GENERIC_API_KEY = process.env.API_KEY;
+const GENERIC_API_KEY = OPENAI_API_KEY;
 
 const PROMPT_STRATEGIES: Record<ModificationLevel, string> = {
   preserve: `
