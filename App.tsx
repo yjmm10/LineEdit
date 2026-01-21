@@ -4,6 +4,7 @@ import { LandingPage } from './components/LandingPage';
 import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { UserDocument, DocumentSnapshot } from './types';
+import { Analytics } from '@vercel/analytics/react';
 
 const STORAGE_KEY = 'lineedit_docs_data';
 
@@ -97,6 +98,7 @@ const App: React.FC = () => {
           />
         )}
       </main>
+      <Analytics />
     </div>
   );
 };
