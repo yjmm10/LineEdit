@@ -276,8 +276,9 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           activeSuggestions: newSuggestions
         });
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Retry failed", err);
+      alert("Retry failed: " + err.message);
     } finally {
       setProcessingCardIndex(null);
     }
@@ -358,8 +359,23 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       setChatInput('');
       setSelection(''); // Clear selection after processing
       setMode('review');
-    } catch (error) {
+      
+      if (response.suggestions.length === 0) {
+         // Provide feedback if AI returned success but no changes
+         alert("AI processing complete, but no changes were suggested for this text/strategy.");
+      }
+    } catch (error: any) {
       console.error("AI Modification Error:", error);
+      
+      if (error.message === "NO_PROVIDER_CONFIGURED") {
+        alert("Configuration Error: No AI Provider found.\n\nPlease set GEMINI_API_KEY or (BASE_URL + API_KEY) in your environment variables.");
+      } else if (error.message === "MISSING_GEMINI_KEY") {
+         alert("Configuration Error: GEMINI_API_KEY is missing in your environment.");
+      } else if (error.message === "MISSING_OPENAI_CONFIG") {
+         alert("Configuration Error: BASE_URL or API_KEY is missing for OpenAI compatible endpoint.");
+      } else {
+        alert(`AI Request Failed: ${error.message || "Unknown error"}\n\nPlease check your internet connection or API keys.`);
+      }
     } finally {
       setIsProcessing(false);
     }

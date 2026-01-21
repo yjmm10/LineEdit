@@ -34,7 +34,7 @@ const PROMPT_STRATEGIES: Record<ModificationLevel, string> = {
 
 // --- Gemini Implementation ---
 const callGemini = async (content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
-  if (!GEMINI_API_KEY) throw new Error("Gemini API Key missing");
+  if (!GEMINI_API_KEY) throw new Error("MISSING_GEMINI_KEY");
   
   const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
   const strategyPrompt = PROMPT_STRATEGIES[level];
@@ -105,7 +105,7 @@ Return a JSON object containing a 'summary' and a 'suggestions' array.
 
 // --- OpenAI Compatible Implementation ---
 const callOpenAICompatible = async (content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
-  if (!OPENAI_BASE_URL || !OPENAI_API_KEY) throw new Error("OpenAI Configuration missing");
+  if (!OPENAI_BASE_URL || !OPENAI_API_KEY) throw new Error("MISSING_OPENAI_CONFIG");
 
   const strategyPrompt = PROMPT_STRATEGIES[level];
 
@@ -175,7 +175,7 @@ User Instruction: "${instruction}"
     if (!response.ok) {
         const errText = await response.text();
         console.error("OpenAI API Error:", response.status, errText);
-        throw new Error(`API Error: ${response.status}`);
+        throw new Error(`API_ERROR: ${response.status} - ${errText}`);
     }
 
     const data = await response.json();
@@ -191,25 +191,15 @@ User Instruction: "${instruction}"
 // --- Main Export ---
 
 export const refineDocument = async (content: string, instruction: string, level: ModificationLevel): Promise<AIResponse> => {
-  try {
-    if (GEMINI_API_KEY) {
-      console.log("Using Gemini Provider");
-      return await callGemini(content, instruction, level);
-    } else if (OPENAI_BASE_URL && OPENAI_API_KEY) {
-      console.log("Using OpenAI Compatible Provider:", OPENAI_MODEL_NAME);
-      return await callOpenAICompatible(content, instruction, level);
-    } else {
-      console.warn("No AI Provider Configured");
-      return {
-        summary: "AI Configuration missing. Please set GEMINI_API_KEY or BASE_URL/API_KEY.",
-        suggestions: []
-      };
-    }
-  } catch (error) {
-    console.error("Refine Document Error:", error);
-    return {
-      summary: "An error occurred while processing the document.",
-      suggestions: []
-    };
+  // Check keys before attempting anything
+  if (GEMINI_API_KEY) {
+    console.log("Using Gemini Provider");
+    return await callGemini(content, instruction, level);
+  } else if (OPENAI_BASE_URL && OPENAI_API_KEY) {
+    console.log("Using OpenAI Compatible Provider:", OPENAI_MODEL_NAME);
+    return await callOpenAICompatible(content, instruction, level);
+  } else {
+    // Explicitly throw so the UI can catch it
+    throw new Error("NO_PROVIDER_CONFIGURED");
   }
 };
