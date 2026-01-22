@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { UserDocument, SuggestedChange, ModificationLevel } from '../types';
 import { refineDocument } from '../services/geminiService';
 import { useToast } from '../contexts/ToastContext';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface EditorProps {
   document: UserDocument;
@@ -59,21 +60,11 @@ const computeDiff = (text1: string, text2: string): DiffPart[] => {
   return result;
 };
 
-// --- Slash Commands Data ---
-const SLASH_COMMANDS = [
-  { label: 'Polish / Improve', value: 'Polish this text for better flow, clarity, and professional tone.', desc: 'Enhance writing quality' },
-  { label: 'Fix Grammar', value: 'Fix all grammar, spelling, and punctuation errors.', desc: 'Strict corrections only' },
-  { label: 'Translate to English', value: 'Translate this text into fluent, natural English.', desc: 'Language conversion' },
-  { label: 'Translate to Chinese', value: 'Translate this text into fluent, natural Chinese.', desc: 'Language conversion' },
-  { label: 'Make Concise', value: 'Make this text more concise and direct, removing fluff.', desc: 'Shorten content' },
-  { label: 'To Markdown', value: 'Convert this text into structured Markdown format (headers, lists, bolding).', desc: 'Format conversion' },
-  { label: 'Expand / Elaborate', value: 'Expand on these points with more detail and context.', desc: 'Add depth' },
-];
-
 // --- Component ---
 
 export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapshot }) => {
   const { showToast } = useToast();
+  const { t, theme } = useSettings();
   const [chatInput, setChatInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingCardIndex, setProcessingCardIndex] = useState<number | null>(null);
@@ -86,7 +77,24 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   // Slash Command State
   const [showCommands, setShowCommands] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
-  const [filteredCommands, setFilteredCommands] = useState(SLASH_COMMANDS);
+
+  // Dynamic Slash Commands based on language
+  const slashCommands = useMemo(() => [
+    { label: t('cmd.polish.label'), value: 'Polish this text for better flow, clarity, and professional tone.', desc: t('cmd.polish.desc') },
+    { label: t('cmd.grammar.label'), value: 'Fix all grammar, spelling, and punctuation errors.', desc: t('cmd.grammar.desc') },
+    { label: t('cmd.en.label'), value: 'Translate this text into fluent, natural English.', desc: t('cmd.en.desc') },
+    { label: t('cmd.zh.label'), value: 'Translate this text into fluent, natural Chinese.', desc: t('cmd.zh.desc') },
+    { label: t('cmd.concise.label'), value: 'Make this text more concise and direct, removing fluff.', desc: t('cmd.concise.desc') },
+    { label: t('cmd.md.label'), value: 'Convert this text into structured Markdown format (headers, lists, bolding).', desc: t('cmd.md.desc') },
+    { label: t('cmd.expand.label'), value: 'Expand on these points with more detail and context.', desc: t('cmd.expand.desc') },
+  ], [t]);
+
+  const [filteredCommands, setFilteredCommands] = useState(slashCommands);
+
+  // Update filtered commands when commands list changes (lang switch)
+  useEffect(() => {
+    setFilteredCommands(slashCommands);
+  }, [slashCommands]);
 
   // Refs for connector lines
   const containerRef = useRef<HTMLDivElement>(null);
@@ -316,7 +324,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
     if (val.startsWith('/')) {
       const query = val.slice(1).toLowerCase();
-      const filtered = SLASH_COMMANDS.filter(cmd => 
+      const filtered = slashCommands.filter(cmd => 
         cmd.label.toLowerCase().includes(query) || 
         cmd.value.toLowerCase().includes(query)
       );
@@ -345,7 +353,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
     }
   };
 
-  const selectCommand = (cmd: typeof SLASH_COMMANDS[0]) => {
+  const selectCommand = (cmd: typeof slashCommands[0]) => {
     setChatInput(cmd.value);
     setShowCommands(false);
   };
@@ -403,7 +411,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           onChange={handleContentChange}
           onSelect={handleTextareaSelect}
           placeholder="Start typing or paste your content..."
-          className="flex-1 p-8 text-sm leading-loose focus:outline-none resize-none bg-transparent font-sans"
+          className="flex-1 p-8 text-sm leading-loose focus:outline-none resize-none bg-transparent font-sans text-black dark:text-gray-100 placeholder-black/30 dark:placeholder-white/30"
         />
       );
     }
@@ -427,7 +435,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
           className={`cursor-pointer transition-all duration-200 rounded-sm
             ${hoveredIndex === match.sugIndex 
               ? 'bg-yellow-200 text-black px-0.5 box-decoration-clone shadow-sm' 
-              : 'border-b border-dashed border-black/30 hover:border-black'}`}
+              : 'border-b border-dashed border-black/30 dark:border-white/30 hover:border-black dark:hover:border-white'}`}
         >
           {currentText.substring(match.start, match.end)}
         </span>
@@ -441,7 +449,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
     return (
       <div 
-        className="flex-1 p-8 text-sm leading-loose whitespace-pre-wrap font-sans overflow-y-auto cursor-text select-text"
+        className="flex-1 p-8 text-sm leading-loose whitespace-pre-wrap font-sans overflow-y-auto cursor-text select-text text-black dark:text-gray-100"
         onDoubleClick={() => setMode('edit')}
         onMouseUp={handleReviewSelect}
         title="Double-click to edit, select text to refine specific parts"
@@ -461,7 +469,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
      suggestionMatches.forEach((match, i) => {
        if (match.start > lastPos) {
-         resultParts.push(<span key={`p-text-${i}`} className="text-black/60">{currentText.substring(lastPos, match.start)}</span>);
+         resultParts.push(<span key={`p-text-${i}`} className="text-black/60 dark:text-white/60">{currentText.substring(lastPos, match.start)}</span>);
        }
        
        const sug = suggestions[match.sugIndex];
@@ -475,23 +483,23 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
            onMouseLeave={() => setHoveredIndex(null)}
            className={`cursor-pointer transition-all duration-200 rounded-sm relative group
              ${isHovered
-               ? 'bg-green-100 text-green-800 px-0.5 box-decoration-clone shadow-sm' 
-               : 'bg-green-50/50 text-black'}`}
+               ? 'bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 px-0.5 box-decoration-clone shadow-sm' 
+               : 'bg-green-50/50 dark:bg-green-900/30 text-black dark:text-white'}`}
          >
            {sug.modifiedText}
            
            {/* Popover Actions for Preview Mode */}
            {isHovered && (
-             <span className="absolute left-0 top-full mt-1 z-50 bg-white border border-black shadow-lg p-2 min-w-[140px] rounded flex flex-col gap-2 pointer-events-auto">
-               <div className="text-[10px] text-black/60 italic leading-tight mb-1">{sug.reason}</div>
+             <span className="absolute left-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-black dark:border-white/20 shadow-lg p-2 min-w-[140px] rounded flex flex-col gap-2 pointer-events-auto">
+               <div className="text-[10px] text-black/60 dark:text-white/60 italic leading-tight mb-1">{sug.reason}</div>
                <div className="flex items-center gap-1">
-                 <button onClick={(e) => { e.stopPropagation(); handleAcceptChange(match.sugIndex); }} className="flex-1 bg-black text-white p-1 rounded hover:bg-gray-800" title="Accept">
+                 <button onClick={(e) => { e.stopPropagation(); handleAcceptChange(match.sugIndex); }} className="flex-1 bg-black text-white dark:bg-white dark:text-black p-1 rounded hover:opacity-80" title={t('editor.btn.accept')}>
                    <CheckIcon className="w-3 h-3 mx-auto"/>
                  </button>
-                 <button onClick={(e) => { e.stopPropagation(); handleRetryChange(match.sugIndex); }} className="flex-1 border border-black/10 p-1 rounded hover:bg-gray-100" title="Retry">
-                    {processingCardIndex === match.sugIndex ? <div className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin mx-auto"/> : <RefreshIcon className="w-3 h-3 mx-auto"/>}
+                 <button onClick={(e) => { e.stopPropagation(); handleRetryChange(match.sugIndex); }} className="flex-1 border border-black/10 dark:border-white/10 p-1 rounded hover:bg-gray-100 dark:hover:bg-white/10" title={t('editor.btn.retry')}>
+                    {processingCardIndex === match.sugIndex ? <div className="w-3 h-3 border-2 border-black/20 dark:border-white/20 border-t-black dark:border-t-white rounded-full animate-spin mx-auto"/> : <RefreshIcon className="w-3 h-3 mx-auto"/>}
                  </button>
-                 <button onClick={(e) => { e.stopPropagation(); handleRejectChange(match.sugIndex); }} className="flex-1 border border-red-200 text-red-600 p-1 rounded hover:bg-red-50" title="Reject">
+                 <button onClick={(e) => { e.stopPropagation(); handleRejectChange(match.sugIndex); }} className="flex-1 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20" title={t('editor.btn.reject')}>
                    <XIcon className="w-3 h-3 mx-auto"/>
                  </button>
                </div>
@@ -503,7 +511,7 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
      });
 
      if (lastPos < currentText.length) {
-       resultParts.push(<span key="p-text-end" className="text-black/60">{currentText.substring(lastPos)}</span>);
+       resultParts.push(<span key="p-text-end" className="text-black/60 dark:text-white/60">{currentText.substring(lastPos)}</span>);
      }
 
      return (
@@ -514,42 +522,50 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
   };
 
   return (
-    <div className="flex flex-col h-full bg-white relative">
+    <div className="flex flex-col h-full bg-white dark:bg-[#0a0a0a] relative transition-colors">
       {/* Top Bar */}
-      <div className="h-14 border-b border-black/10 flex items-center justify-between px-6 bg-white shrink-0 z-20">
+      <div className="h-14 border-b border-black/10 dark:border-white/10 flex items-center justify-between px-6 bg-white dark:bg-[#0a0a0a] shrink-0 z-20">
         <div className="flex items-center gap-4">
           <input 
             type="text" 
             value={document.title} 
             onChange={(e) => onUpdate({...document, title: e.target.value})}
-            className="font-bold text-sm tracking-tight border-none focus:outline-none focus:ring-0 w-64 bg-transparent"
+            className="font-bold text-sm tracking-tight border-none focus:outline-none focus:ring-0 w-64 bg-transparent text-black dark:text-white placeholder-black/30 dark:placeholder-white/30"
           />
-          <div className="h-4 w-[1px] bg-black/10"></div>
-          <div className="flex items-center gap-4 text-[10px] text-black/40 font-mono">
-            <span>{stats.lines} LINES</span>
-            <span>{stats.words} WORDS</span>
+          <div className="h-4 w-[1px] bg-black/10 dark:bg-white/10"></div>
+          <div className="flex items-center gap-4 text-[10px] text-black/40 dark:text-white/40 font-mono">
+            <span>{stats.lines} {t('editor.lines')}</span>
+            <span>{stats.words} {t('editor.words')}</span>
           </div>
         </div>
         <div className="flex items-center gap-3">
-           <div className="flex bg-black/5 rounded p-0.5">
+           <div className="flex bg-black/5 dark:bg-white/10 rounded p-0.5">
              <button 
                onClick={() => setMode('edit')}
-               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${mode === 'edit' ? 'bg-white shadow-sm text-black' : 'text-black/40 hover:text-black'}`}
+               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
+                 mode === 'edit' 
+                  ? 'bg-white dark:bg-black shadow-sm text-black dark:text-white' 
+                  : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white'
+               }`}
              >
-               EDIT
+               {t('editor.mode.edit')}
              </button>
              <button 
                onClick={() => setMode('review')}
-               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${mode === 'review' ? 'bg-white shadow-sm text-black' : 'text-black/40 hover:text-black'}`}
+               className={`px-3 py-1 text-[10px] font-bold rounded-sm transition-all ${
+                 mode === 'review' 
+                  ? 'bg-white dark:bg-black shadow-sm text-black dark:text-white' 
+                  : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white'
+               }`}
              >
-               REVIEW
+               {t('editor.mode.review')}
              </button>
           </div>
           <button 
             onClick={handleLocalSnapshot}
-            className="px-4 py-1.5 border border-black text-[10px] font-bold hover:bg-black hover:text-white transition-all line-art-shadow"
+            className="px-4 py-1.5 border border-black dark:border-white text-[10px] font-bold text-black dark:text-white hover:bg-black dark:hover:bg-white hover:text-white dark:hover:text-black transition-all line-art-shadow"
           >
-            SNAPSHOT
+            {t('editor.btn.snapshot')}
           </button>
         </div>
       </div>
@@ -563,26 +579,26 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
             <path 
               d={`M ${lineCoords.x1} ${lineCoords.y1} C ${lineCoords.x1 + 60} ${lineCoords.y1}, ${lineCoords.x2 - 60} ${lineCoords.y2}, ${lineCoords.x2} ${lineCoords.y2}`}
               fill="none"
-              stroke="black"
+              stroke={theme === 'dark' ? 'white' : 'black'}
               strokeWidth="1.5"
               strokeDasharray="4 2"
-              className="animate-pulse"
+              className="animate-pulse opacity-50"
             />
           )}
           {lineCoords && (
              <>
-                <circle cx={lineCoords.x1} cy={lineCoords.y1} r="3" fill="black" />
-                <circle cx={lineCoords.x2} cy={lineCoords.y2} r="3" fill="black" />
+                <circle cx={lineCoords.x1} cy={lineCoords.y1} r="3" fill={theme === 'dark' ? 'white' : 'black'} />
+                <circle cx={lineCoords.x2} cy={lineCoords.y2} r="3" fill={theme === 'dark' ? 'white' : 'black'} />
              </>
           )}
         </svg>
 
         {/* LEFT PANEL */}
-        <div className="flex-1 border-r border-black/10 flex flex-col relative bg-white z-10">
-          <div className="absolute top-4 right-6 text-[10px] font-bold text-black/20 pointer-events-none uppercase tracking-widest z-10">
-            {mode === 'edit' ? 'Editor Mode' : 'Original Text'}
+        <div className="flex-1 border-r border-black/10 dark:border-white/10 flex flex-col relative bg-white dark:bg-[#0a0a0a] z-10 transition-colors">
+          <div className="absolute top-4 right-6 text-[10px] font-bold text-black/20 dark:text-white/20 pointer-events-none uppercase tracking-widest z-10">
+            {mode === 'edit' ? t('editor.mode.editorLabel') : t('editor.mode.originalLabel')}
           </div>
-          <div className="absolute left-0 top-0 bottom-0 w-12 bg-black/[0.02] border-r border-black/5 text-right p-4 text-[10px] font-mono text-black/20 select-none overflow-hidden">
+          <div className="absolute left-0 top-0 bottom-0 w-12 bg-black/[0.02] dark:bg-white/[0.02] border-r border-black/5 dark:border-white/5 text-right p-4 text-[10px] font-mono text-black/20 dark:text-white/20 select-none overflow-hidden">
              {Array.from({ length: Math.max(stats.lines, 1) }).map((_, i) => (
                 <div key={i} className="h-6 leading-6">{i + 1}</div>
               ))}
@@ -593,41 +609,52 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
         </div>
 
         {/* RIGHT PANEL */}
-        <div className="flex-1 flex flex-col bg-slate-50 relative overflow-hidden z-10">
+        <div className="flex-1 flex flex-col bg-slate-50 dark:bg-[#111] relative overflow-hidden z-10 transition-colors">
           
           {/* Right Panel Header */}
-          <div className="h-10 border-b border-black/5 flex items-center justify-between px-4 bg-slate-50/50 backdrop-blur-sm z-20 shrink-0">
+          <div className="h-10 border-b border-black/5 dark:border-white/5 flex items-center justify-between px-4 bg-slate-50/50 dark:bg-[#111]/50 backdrop-blur-sm z-20 shrink-0">
              <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setViewMode('list')}
-                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${viewMode === 'list' ? 'bg-black text-white' : 'text-black/40 hover:text-black'}`}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${
+                    viewMode === 'list' 
+                      ? 'bg-black dark:bg-white text-white dark:text-black' 
+                      : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white'
+                  }`}
                 >
-                  Changes Only
+                  {t('editor.view.changes')}
                 </button>
-                <div className="w-[1px] h-3 bg-black/10"></div>
+                <div className="w-[1px] h-3 bg-black/10 dark:bg-white/10"></div>
                 <button 
                   onClick={() => setViewMode('preview')}
-                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${viewMode === 'preview' ? 'bg-black text-white' : 'text-black/40 hover:text-black'}`}
+                  className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded transition-all ${
+                    viewMode === 'preview' 
+                      ? 'bg-black dark:bg-white text-white dark:text-black' 
+                      : 'text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white'
+                  }`}
                 >
-                  Full Preview
+                  {t('editor.view.preview')}
                 </button>
              </div>
              <button
                onClick={handleCopyRightPanel}
                title="Copy result"
-               className="text-[10px] font-bold text-black/40 hover:text-black uppercase tracking-wider flex items-center gap-1"
+               className="text-[10px] font-bold text-black/40 dark:text-white/40 hover:text-black dark:hover:text-white uppercase tracking-wider flex items-center gap-1"
              >
-               <span>COPY</span>
+               <span>{t('editor.btn.copy')}</span>
              </button>
           </div>
           
           <div className="flex-1 overflow-y-auto">
             {(!document.activeSuggestions || !document.activeSuggestions.length) ? (
-               <div className="h-full flex flex-col items-center justify-center text-black/20 space-y-4">
-                  <div className="w-16 h-16 border-2 border-black/10 rounded-full flex items-center justify-center">
+               <div className="h-full flex flex-col items-center justify-center text-black/20 dark:text-white/20 space-y-4">
+                  <div className="w-16 h-16 border-2 border-black/10 dark:border-white/10 rounded-full flex items-center justify-center">
                     <span className="text-2xl">AI</span>
                   </div>
-                  <p className="text-xs font-medium uppercase tracking-widest">No Active Suggestions</p>
+                  <div className="text-center">
+                    <p className="text-xs font-medium uppercase tracking-widest">{t('editor.empty.title')}</p>
+                    <p className="text-[10px] mt-1 opacity-70">{t('editor.empty.desc')}</p>
+                  </div>
                </div>
             ) : (
               <>
@@ -646,36 +673,36 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                              : ''
                          }`}
                        >
-                         <div className={`bg-white p-5 border transition-all relative ${
+                         <div className={`p-5 border transition-all relative ${
                            hoveredIndex === idx 
-                             ? 'border-black line-art-shadow shadow-xl z-20' 
-                             : 'border-black/5 shadow-sm opacity-80 hover:opacity-100 hover:border-black/20'
+                             ? 'bg-white dark:bg-[#1a1a1a] border-black dark:border-white line-art-shadow shadow-xl z-20' 
+                             : 'bg-white dark:bg-[#161616] border-black/5 dark:border-white/10 shadow-sm opacity-80 hover:opacity-100 hover:border-black/20 dark:hover:border-white/30'
                          }`}>
                            
                            <div>
-                             <p className="text-sm font-medium leading-relaxed text-black">
+                             <p className="text-sm font-medium leading-relaxed text-black dark:text-gray-100">
                                {sug.modifiedText}
                              </p>
                            </div>
 
-                           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${hoveredIndex === idx ? 'max-h-96 opacity-100 mt-4 pt-4 border-t border-black/5' : 'max-h-0 opacity-0'}`}>
+                           <div className={`overflow-hidden transition-all duration-300 ease-in-out ${hoveredIndex === idx ? 'max-h-96 opacity-100 mt-4 pt-4 border-t border-black/5 dark:border-white/5' : 'max-h-0 opacity-0'}`}>
                               <div className="grid gap-4">
                                  <div>
-                                     <p className="text-[9px] font-bold text-blue-500 uppercase mb-1 tracking-wider">Analysis</p>
-                                     <p className="text-xs text-black/70 leading-relaxed italic">
+                                     <p className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase mb-1 tracking-wider">{t('editor.card.analysis')}</p>
+                                     <p className="text-xs text-black/70 dark:text-white/70 leading-relaxed italic">
                                      "{sug.reason}"
                                      </p>
                                  </div>
                                  <div>
-                                     <p className="text-[9px] font-bold text-purple-600 uppercase mb-1 tracking-wider">Text Diff</p>
-                                     <div className="text-xs leading-relaxed text-black/80 font-mono bg-black/[0.02] p-2 rounded whitespace-pre-wrap">
+                                     <p className="text-[9px] font-bold text-purple-600 dark:text-purple-400 uppercase mb-1 tracking-wider">{t('editor.card.diff')}</p>
+                                     <div className="text-xs leading-relaxed text-black/80 dark:text-white/80 font-mono bg-black/[0.02] dark:bg-white/[0.05] p-2 rounded whitespace-pre-wrap">
                                        {computeDiff(sug.originalText, sug.modifiedText).map((part, i) => (
                                          <span 
                                            key={i} 
                                            className={`${
-                                             part.type === 'add' ? 'bg-green-100 text-green-700' :
-                                             part.type === 'remove' ? 'bg-red-100 text-red-600 line-through' :
-                                             'text-gray-500'
+                                             part.type === 'add' ? 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' :
+                                             part.type === 'remove' ? 'bg-red-100 text-red-600 dark:bg-red-900/50 dark:text-red-300 line-through' :
+                                             'text-gray-500 dark:text-gray-400'
                                            }`}
                                          >
                                            {part.value}
@@ -686,13 +713,13 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                                  
                                  {/* ACTIONS (List View) */}
                                  <div className="flex items-center gap-2 pt-2">
-                                    <button onClick={() => handleAcceptChange(idx)} className="flex-1 flex items-center justify-center gap-2 bg-black text-white py-2 text-[10px] font-bold uppercase tracking-wider hover:bg-gray-800 transition-colors">
-                                      <CheckIcon className="w-3 h-3" /> Accept
+                                    <button onClick={() => handleAcceptChange(idx)} className="flex-1 flex items-center justify-center gap-2 bg-black dark:bg-white text-white dark:text-black py-2 text-[10px] font-bold uppercase tracking-wider hover:opacity-80 transition-opacity">
+                                      <CheckIcon className="w-3 h-3" /> {t('editor.btn.accept')}
                                     </button>
-                                    <button onClick={() => handleRetryChange(idx)} disabled={processingCardIndex === idx} className="px-3 py-2 bg-white border border-black/10 text-black text-[10px] hover:bg-black/5 transition-colors">
-                                      {processingCardIndex === idx ? <div className="w-3 h-3 border-2 border-black/20 border-t-black rounded-full animate-spin"/> : <RefreshIcon className="w-3 h-3" />}
+                                    <button onClick={() => handleRetryChange(idx)} disabled={processingCardIndex === idx} className="px-3 py-2 bg-transparent border border-black/10 dark:border-white/10 text-black dark:text-white text-[10px] hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                                      {processingCardIndex === idx ? <div className="w-3 h-3 border-2 border-black/20 dark:border-white/20 border-t-black dark:border-t-white rounded-full animate-spin"/> : <RefreshIcon className="w-3 h-3" />}
                                     </button>
-                                    <button onClick={() => handleRejectChange(idx)} className="px-3 py-2 bg-white border border-red-100 text-red-500 text-[10px] hover:bg-red-50 transition-colors">
+                                    <button onClick={() => handleRejectChange(idx)} className="px-3 py-2 bg-transparent border border-red-100 dark:border-red-900 text-red-500 dark:text-red-400 text-[10px] hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                                       <XIcon className="w-3 h-3" />
                                     </button>
                                  </div>
@@ -714,15 +741,15 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
       </div>
 
       {/* AI Chat Console */}
-      <div className="p-6 border-t border-black/10 bg-white z-20 relative">
+      <div className="p-6 border-t border-black/10 dark:border-white/10 bg-white dark:bg-[#0a0a0a] z-20 relative transition-colors">
         <form onSubmit={handleAIChat} className="max-w-3xl mx-auto flex flex-col gap-4 relative">
           
           {/* Selection Indicator */}
           {selection && (
             <div className="absolute bottom-full mb-4 left-0 right-0 flex justify-center">
-              <div className="bg-black text-white px-4 py-2 rounded-full text-xs font-medium flex items-center gap-3 shadow-lg animate-bounce-in">
-                <span className="max-w-[200px] truncate">Targeting Selection: "{selection}"</span>
-                <button type="button" onClick={() => setSelection('')} className="hover:text-red-300">
+              <div className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-full text-xs font-medium flex items-center gap-3 shadow-lg animate-bounce-in">
+                <span className="max-w-[200px] truncate">{t('editor.target.selection')}: "{selection}"</span>
+                <button type="button" onClick={() => setSelection('')} className="hover:text-red-300 dark:hover:text-red-500">
                   <XIcon className="w-3 h-3" />
                 </button>
               </div>
@@ -731,9 +758,9 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
 
           {/* Slash Command Menu */}
           {showCommands && (
-            <div className="absolute bottom-full left-0 mb-2 w-full max-w-lg bg-white border border-black shadow-lg rounded-t-lg overflow-hidden z-50">
-              <div className="bg-black text-white text-[10px] font-bold px-3 py-1 uppercase tracking-widest">
-                Commands
+            <div className="absolute bottom-full left-0 mb-2 w-full max-w-lg bg-white dark:bg-[#1a1a1a] border border-black dark:border-white/20 shadow-lg rounded-t-lg overflow-hidden z-50">
+              <div className="bg-black dark:bg-white text-white dark:text-black text-[10px] font-bold px-3 py-1 uppercase tracking-widest">
+                {t('editor.menu.commands')}
               </div>
               <div className="max-h-60 overflow-y-auto">
                 {filteredCommands.map((cmd, index) => (
@@ -742,12 +769,14 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
                     type="button"
                     onClick={() => selectCommand(cmd)}
                     onMouseEnter={() => setCommandIndex(index)}
-                    className={`w-full text-left px-4 py-3 border-b border-black/5 last:border-b-0 flex flex-col transition-colors ${
-                      index === commandIndex ? 'bg-yellow-100' : 'hover:bg-gray-50'
+                    className={`w-full text-left px-4 py-3 border-b border-black/5 dark:border-white/5 last:border-b-0 flex flex-col transition-colors ${
+                      index === commandIndex 
+                        ? 'bg-yellow-100 dark:bg-yellow-900/30' 
+                        : 'hover:bg-gray-50 dark:hover:bg-white/5'
                     }`}
                   >
-                    <span className="text-xs font-bold text-black">{cmd.label}</span>
-                    <span className="text-[10px] text-black/50">{cmd.desc}</span>
+                    <span className="text-xs font-bold text-black dark:text-white">{cmd.label}</span>
+                    <span className="text-[10px] text-black/50 dark:text-white/50">{cmd.desc}</span>
                   </button>
                 ))}
               </div>
@@ -760,35 +789,35 @@ export const Editor: React.FC<EditorProps> = ({ document, onUpdate, onTakeSnapsh
               value={chatInput}
               onChange={handleChatChange}
               onKeyDown={handleKeyDown}
-              placeholder={selection ? "Instructions for selection..." : "Type '/' for commands or ask AI..."}
-              className="flex-1 px-4 py-3 bg-white border border-black focus:outline-none focus:ring-1 focus:ring-black text-black text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-shadow placeholder:text-black/30"
+              placeholder={selection ? t('editor.input.selection') : t('editor.input.placeholder')}
+              className="flex-1 px-4 py-3 bg-white dark:bg-[#111] border border-black dark:border-white/20 focus:outline-none focus:ring-1 focus:ring-black dark:focus:ring-white text-black dark:text-white text-sm shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.2)] transition-shadow placeholder:text-black/30 dark:placeholder:text-white/30"
               disabled={isProcessing}
               autoComplete="off"
             />
-             <div className="flex items-stretch border border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)]">
+             <div className="flex items-stretch border border-black dark:border-white/20 bg-white dark:bg-[#111] shadow-[4px_4px_0px_0px_rgba(0,0,0,0.1)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)]">
               {(['preserve', 'refine', 'elevate'] as ModificationLevel[]).map((level) => (
                 <button
                   key={level}
                   type="button"
                   onClick={() => setModLevel(level)}
-                  className={`px-4 text-[10px] font-bold uppercase tracking-wider transition-colors border-r border-black last:border-r-0 ${
+                  className={`px-4 text-[10px] font-bold uppercase tracking-wider transition-colors border-r border-black dark:border-white/20 last:border-r-0 ${
                     modLevel === level 
-                      ? 'bg-gray-100 text-black shadow-inner' 
-                      : 'bg-white text-black/50 hover:text-black hover:bg-black/5'
+                      ? 'bg-gray-100 dark:bg-white/10 text-black dark:text-white shadow-inner' 
+                      : 'bg-white dark:bg-transparent text-black/50 dark:text-white/50 hover:text-black dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5'
                   }`}
                   disabled={isProcessing}
-                  title={level === 'preserve' ? 'Minimal Changes' : level === 'elevate' ? 'Rewrite & Polish' : 'Balanced Editing'}
+                  title={t(`strategy.${level}.desc` as any)}
                 >
-                  {level}
+                  {t(`strategy.${level}` as any)}
                 </button>
               ))}
             </div>
             <button 
               type="submit"
               disabled={isProcessing}
-              className="px-6 bg-black text-white font-bold text-xs uppercase tracking-widest hover:bg-gray-800 transition-colors shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] disabled:opacity-50"
+              className="px-6 bg-black dark:bg-white text-white dark:text-black font-bold text-xs uppercase tracking-widest hover:opacity-90 transition-opacity shadow-[4px_4px_0px_0px_rgba(0,0,0,0.2)] dark:shadow-[4px_4px_0px_0px_rgba(255,255,255,0.1)] disabled:opacity-50"
             >
-              {isProcessing ? 'Thinking...' : 'Run AI'}
+              {isProcessing ? t('editor.btn.thinking') : t('editor.btn.run')}
             </button>
           </div>
         </form>

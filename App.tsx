@@ -5,6 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { Editor } from './components/Editor';
 import { UserDocument, DocumentSnapshot } from './types';
 import { ToastProvider } from './contexts/ToastContext';
+import { SettingsProvider } from './contexts/SettingsContext';
 
 const STORAGE_KEY = 'lineedit_docs_data';
 
@@ -60,8 +61,6 @@ const AppContent: React.FC = () => {
       ...activeDoc,
       snapshots: [...activeDoc.snapshots, newSnapshot]
     });
-    // Removed alert, Editor handles its own feedback or we could add toast here, 
-    // but onTakeSnapshot is passed down, let's keep it simple or let Editor show success
   };
 
   const handleRestoreSnapshot = (docId: string, snapshot: DocumentSnapshot) => {
@@ -82,7 +81,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white selection:bg-yellow-200 selection:text-black">
+    <div className="flex h-screen w-screen overflow-hidden bg-white dark:bg-[#0a0a0a] text-black dark:text-gray-100 selection:bg-yellow-200 selection:text-black">
       <Sidebar 
         documents={documents}
         activeDocId={activeDocId}
@@ -105,9 +104,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <ToastProvider>
-      <AppContent />
-    </ToastProvider>
+    <SettingsProvider>
+      <ToastProvider>
+        <AppContent />
+      </ToastProvider>
+    </SettingsProvider>
   );
 }
 
